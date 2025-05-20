@@ -29,12 +29,11 @@ const App = () => {
   // Reverse Geocode: get formatted address from lat/lng using Google Maps Geocoding API
   const getAddressFromLatLng = async (lat, lng) => {
     try {
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${import.meta.env.VITE_GOOGLE_API_KEY}`
-      );
+      const response = await fetch(`http://localhost:5000/reverse-geocode?lat=${lat}&lng=${lng}`);
       const data = await response.json();
-      if (data.status === "OK" && data.results.length > 0) {
-        return data.results[0].formatted_address;
+
+      if (data.address) {
+        return data.address;
       } else {
         return "Unknown location";
       }
@@ -44,49 +43,68 @@ const App = () => {
     }
   };
 
-  useEffect(() => {
-    loadGoogleMapsScript().then(() => {
-      if (inputRef.current) {
-        const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-          types: ["geocode"],
-          componentRestrictions: { country: "in" },
-        });
 
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          if (!place.geometry || !place.geometry.location) {
-            setError("No details available for this place");
-            return;
-          }
+useEffect(() => {
+  // Helper to initialize autocomplete after script loads
+  const initAutocomplete = () => {
+    if (inputRef.current && window.google && window.google.maps) {
+      const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+        types: ["geocode"],
+        componentRestrictions: { country: "in" },
+      });
 
-          const lat = place.geometry.location.lat();
-          const lng = place.geometry.location.lng();
+      autocomplete.addListener("place_changed", () => {
+        const place = autocomplete.getPlace();
+        if (!place.geometry || !place.geometry.location) {
+          setError("No details available for this place");
+          return;
+        }
 
-          const newLocation = {
-            name: place.formatted_address || place.name,
-            lat,
-            lng,
-            accuracy: "From search",
-            timestamp: new Date().toISOString()
-          };
-          
-          setLocation(newLocation);
-          addToHistory(newLocation);
-          setError("");
-        });
-      }
-    });
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
 
-    // Load history from localStorage
-    const savedHistory = localStorage.getItem('locationHistory');
-    if (savedHistory) {
-      try {
-        setHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error("Failed to parse location history", e);
-      }
+        const newLocation = {
+          name: place.formatted_address || place.name,
+          lat,
+          lng,
+          accuracy: "From search",
+          timestamp: new Date().toISOString()
+        };
+
+        setLocation(newLocation);
+        addToHistory(newLocation);
+        setError("");
+      });
     }
-  }, []);
+  };
+
+  // Load Google Maps script if not already loaded
+  if (!window.google || !window.google.maps) {
+    if (!document.getElementById("google-maps-script")) {
+      const script = document.createElement("script");
+      script.id = "google-maps-script";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_API_KEY}&libraries=places`;
+      script.async = true;
+      script.onload = initAutocomplete;
+      document.body.appendChild(script);
+    } else {
+      // If script exists but not loaded yet, wait for it
+      document.getElementById("google-maps-script").onload = initAutocomplete;
+    }
+  } else {
+    initAutocomplete();
+  }
+
+  // Load history from localStorage
+  const savedHistory = localStorage.getItem('locationHistory');
+  if (savedHistory) {
+    try {
+      setHistory(JSON.parse(savedHistory));
+    } catch (e) {
+      console.error("Failed to parse location history", e);
+    }
+  }
+}, []);
 
   // Save history to localStorage whenever it changes
   useEffect(() => {
@@ -117,7 +135,7 @@ const App = () => {
         const { latitude, longitude, accuracy } = position.coords;
 
         const address = await getAddressFromLatLng(latitude, longitude);
-        
+
         const newLocation = {
           name: address,
           lat: latitude,
@@ -125,7 +143,7 @@ const App = () => {
           accuracy,
           timestamp: new Date().toISOString()
         };
-        
+
         setLocation(newLocation);
         addToHistory(newLocation);
         setLoading(false);
@@ -189,12 +207,12 @@ const App = () => {
           <h1 className="text-2xl font-bold text-gray-800">Location Finder</h1>
           <p className="text-gray-500 text-sm">Search or get your current location</p>
         </div>
-        
+
         <div className="relative">
           <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
           </div>
-          
+
           <input
             type="text"
             ref={inputRef}
@@ -202,12 +220,12 @@ const App = () => {
             className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
             onClick={() => setShowHistory(true)}
           />
-          
+
           {showHistory && history.length > 0 && (
             <div className="absolute z-10 mt-1 w-full bg-white rounded-lg shadow-lg border border-gray-200">
               <div className="p-2 flex justify-between items-center border-b border-gray-100">
                 <span className="text-sm font-medium text-gray-600">Recent Locations</span>
-                <button 
+                <button
                   onClick={clearHistory}
                   className="text-xs text-red-500 hover:text-red-700"
                 >
@@ -216,8 +234,8 @@ const App = () => {
               </div>
               <ul>
                 {history.map((item, index) => (
-                  <li 
-                    key={index} 
+                  <li
+                    key={index}
                     className="px-3 py-2 hover:bg-gray-50 cursor-pointer flex justify-between items-center border-b border-gray-50 last:border-0"
                     onClick={() => selectFromHistory(item)}
                   >
@@ -259,14 +277,14 @@ const App = () => {
             <div className="flex items-start justify-between">
               <h3 className="text-lg font-semibold text-blue-900">Location Details</h3>
               <div className="flex space-x-2">
-                <button 
+                <button
                   onClick={copyCoordinates}
                   className="p-2 rounded-full hover:bg-blue-100 transition"
                   title="Copy coordinates"
                 >
                   <Copy className="h-4 w-4 text-blue-700" />
                 </button>
-                <button 
+                <button
                   onClick={openInMaps}
                   className="p-2 rounded-full hover:bg-blue-100 transition"
                   title="Open in Google Maps"
@@ -275,7 +293,7 @@ const App = () => {
                 </button>
               </div>
             </div>
-            
+
             <div className="space-y-1">
               <p className="font-medium text-blue-900">{location.name}</p>
               <div className="flex items-center text-sm text-blue-800">
@@ -297,8 +315,8 @@ const App = () => {
             </div>
           </div>
         )}
-        
-       
+
+
       </div>
     </div>
   );
